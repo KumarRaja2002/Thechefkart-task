@@ -9,9 +9,6 @@ import { users } from '../schemas/user';
 import { createPostSchema } from "../validations/post";
 import { db } from "../lib/db";
 import { eq, sql } from "drizzle-orm";
-import { sortHelper } from "../helpers/sortHelper";
-import { UserPostService } from "../services/userPostService";
-import PaginationHelper from "../helpers/paginationHelper";
 export class UserPostController {
     constructor() {
         // Bind methods to the class instance
