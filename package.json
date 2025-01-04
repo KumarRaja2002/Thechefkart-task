@@ -1,0 +1,22 @@
+{
+  "name": "Thechefkart-task",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "node ./dist/src/index.js",
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.13.7",
+    "dotenv": "^16.4.7",
+    "drizzle-kit": "^0.30.1",
+    "drizzle-orm": "^0.38.3",
+    "hono": "^4.6.15",
+    "pg": "^8.13.1",
+    "valibot": "^1.0.0-beta.9"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.17",
+    "@types/pg": "^8.11.10",
+    "tsx": "^4.7.1"
+  }
+}
