@@ -18,8 +18,6 @@ export class UserPostController {
         this.deletePost = this.deletePost.bind(this);
         this.getAllPosts = this.getAllPosts.bind(this);
         this.getAllUsers = this.getAllUsers.bind(this);
-        this.incrementPostCountForUser = this.incrementPostCountForUser.bind(this);
-        this.decrementPostCountForUser = this.decrementPostCountForUser.bind(this);
     }
 
     // Get all posts for a user
@@ -32,8 +30,6 @@ export class UserPostController {
           }
   
           console.log('Fetching posts for user_id:', userId);
-  
-          // Fetch posts associated with the user_id
           const userPosts = await getRecordsByColumn(posts, "user_id", userId);
   
           if (!userPosts) {
@@ -47,41 +43,58 @@ export class UserPostController {
       }
   }
 
-  
-
-    // Create a new post for a user
     public async createPost(c: Context) {
-        try {
-            const userId = parseInt(c.req.param("user_id"));
-            const postData = await c.req.json();
+      try {
+          // Parse user ID and post data
+          const userId = parseInt(c.req.param("user_id"));
+          const postData = await c.req.json();
 
-            // Check if the user exists
-            const user = await getRecordByColumn(users, "id", userId);
-            if (!user) {
-                throw new NotFoundException("User not found.");
-            }
+          // Check if the user exists
+          const user = await db.select().from(users).where(eq(users.id, userId));
+          if (!user.length) {
+              throw new NotFoundException("User not found.");
+          }
 
-            // Validate the post data
-            const validatedPostData = await validate(createPostSchema, postData);
+          // Validate the post data
+          const validatedPostData = await validate(createPostSchema, postData);
 
-            const newPostData = {
-                ...validatedPostData,
-                user_id: userId,
-            };
+          // Prepare new post data
+          const newPostData = {
+              ...validatedPostData,
+              user_id: userId,
+          };
 
-            // Create the post
-            const createdPost = await addSingleRecord(posts, newPostData);
+          // Use a transaction to ensure atomicity
+          const createdPost = await db.transaction(async (tx) => {
+              // Insert the post within the transaction
+              const insertedPost = await tx
+                  .insert(posts)
+                  .values(newPostData)
+                  .returning();
 
-            // Increment post count for the user
-            await this.incrementPostCountForUser(userId);
+              // Increment the post count for the user within the same transaction
+              await tx
+                  .update(users)
+                  .set({ post_count: sql`${users.post_count} + 1` })
+                  .where(eq(users.id, userId));
 
-            return ResponseHelper.sendSuccessResponse(c, 201, "Post created successfully.", createdPost);
-        } catch (error: any) {
-            throw error;
-        }
-    }
+              // Return the created post
+              return insertedPost[0];
+          });
 
-    // Edit an existing post of a user
+          // Return success response
+          return ResponseHelper.sendSuccessResponse(
+              c,
+              201,
+              "Post created successfully.",
+              createdPost
+          );
+      } catch (error: any) {
+          // Handle errors gracefully
+          throw error;
+      }
+  }
+
     public async editPost(c: Context) {
         try {
             const postId = parseInt(c.req.param("post_id"));
@@ -104,24 +117,42 @@ export class UserPostController {
 
     // Delete a post of a user
     public async deletePost(c: Context) {
-        try {
-            const postId = parseInt(c.req.param("post_id"));
-            const post = await db.select().from(posts).where(eq(posts.id, postId));
-
-            if (!post.length) {
-                throw new NotFoundException("Post not found.");
-            }
-            const userId = post[0].user_id;
-            await deleteSingleRecord(posts, postId);
-
-            // Decrement post count for the user
-            await this.decrementPostCountForUser(userId);
-
-            return ResponseHelper.sendSuccessResponse(c, 200, "Post deleted successfully.");
-        } catch (error: any) {
-            throw error;
-        }
-    }
+      try {
+          // Parse post ID from the request parameters
+          const postId = parseInt(c.req.param("post_id"));
+  
+          // Fetch the post details to ensure it exists
+          const post = await db.select().from(posts).where(eq(posts.id, postId));
+          if (!post.length) {
+              throw new NotFoundException("Post not found.");
+          }
+  
+          const userId = post[0].user_id;
+  
+          // Use a transaction to ensure atomicity
+          await db.transaction(async (tx) => {
+              // Delete the post within the transaction
+              await tx.delete(posts).where(eq(posts.id, postId));
+  
+              // Decrement the post count for the user within the same transaction
+              await tx
+                  .update(users)
+                  .set({ post_count: sql`${users.post_count} - 1` })
+                  .where(eq(users.id, userId));
+          });
+  
+          // Return success response
+          return ResponseHelper.sendSuccessResponse(
+              c,
+              200,
+              "Post deleted successfully."
+          );
+      } catch (error: any) {
+          // Handle errors gracefully
+          throw error;
+      }
+  }
+  
 
     // Get all posts
     public async getAllPosts(c: Context) {
@@ -143,29 +174,6 @@ export class UserPostController {
         }
     }
 
-    // Increment post count for a user
-    public async incrementPostCountForUser(userId: number): Promise<any> {
-        const user = await db
-            .update(users)
-            .set({
-                post_count: sql`${users.post_count} + 1`,
-            })
-            .where(eq(users.id, userId))
-            .returning();
+  
 
-        return user[0];
-    }
-
-    // Decrement post count for a user
-    public async decrementPostCountForUser(userId: number): Promise<any> {
-        const user = await db
-            .update(users)
-            .set({
-                post_count: sql`${users.post_count} - 1`,
-            })
-            .where(eq(users.id, userId))
-            .returning();
-
-        return user[0];
-    }
 }
